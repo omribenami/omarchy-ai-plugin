@@ -420,7 +420,7 @@ Panel {
     }
     slotSize: Style.bar.statusSlot
     fontSize: Style.font.caption
-    tooltipText: "Omarchy AI Settings"
+    tooltipText: "Omarchy AI"
     onPressed: root.toggle()
   }
 

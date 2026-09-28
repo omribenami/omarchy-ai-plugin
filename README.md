@@ -1,20 +1,32 @@
-# Omarchy AI Settings
+# Omarchy AI
 
-Bar widget for the [Omarchy](https://omarchy.org) shell. It opens wake-word
-models, the conversation overlay, voice, and the other assistant settings
-from an icon on the bar.
+Voice assistant for the [Omarchy](https://omarchy.org) desktop. Say the wake
+word, use the conversation overlays, change settings from the bar, and let
+it work on the desktop.
 
-Plugin id: `omarchy-ai.settings`.
+**Install the full assistant first.** This page is the front door for
+[Omarchy AI](https://github.com/omribenami/Omarchy-AI). The marketplace still
+lists one Quattro plugin, the settings panel (`omarchy-ai.settings`).
+`omarchy plugin add` does not install the daemon, wake models, or the rest
+of the desktop plugins. A settings icon by itself does nothing useful.
 
-This repository is the marketplace listing for that one widget. Installing
-it from here adds the settings bar widget and its discovery entry in the
-shell. The voice assistant itself — the Python daemon, `install.sh`, wake
-models, and the rest of the desktop plugins — is the
-[Omarchy AI](https://github.com/omribenami/Omarchy-AI) project. Install that
-from a GitHub Release or from source with `install.sh`. The steps are in the
-[Omarchy AI installation guide](https://github.com/omribenami/Omarchy-AI#installation).
+## Install the full assistant
 
-## Install
+Download a GitHub Release, or install from source with `install.sh`:
+
+- [Omarchy AI — Installation](https://github.com/omribenami/Omarchy-AI#installation)
+- Project home: <https://github.com/omribenami/Omarchy-AI>
+
+`install.sh` installs the Python daemon, wake models, desktop plugins, and
+this settings panel, and points the panel at the settings command. That is
+the install that runs Omarchy AI. After the daemon is running, open
+**Omarchy AI** on the bar, choose a provider, save a key, and apply the
+change so the service restarts with it.
+
+## Settings panel only
+
+Use this only after the assistant is already installed, and only if you want
+this marketplace copy of the bar widget:
 
 ```bash
 omarchy plugin add https://github.com/omribenami/omarchy-ai-settings.git --enable
@@ -23,7 +35,8 @@ omarchy plugin add https://github.com/omribenami/omarchy-ai-settings.git --enabl
 Omarchy clones this repository into
 `~/.config/omarchy/plugins/omarchy-ai.settings`, validates `manifest.json`,
 and can enable the widget in the same step. Plugins run as unsandboxed code
-inside the shell; read the files before you confirm.
+inside the shell; read the files before you confirm. This command does not
+start the daemon.
 
 The widget has no default bar section. If the icon does not show up where
 you want it, place it on the right:
@@ -47,23 +60,12 @@ Removal disables the widget and deletes this git checkout. It does not
 uninstall the Omarchy AI daemon, your API keys, or
 `~/.config/omarchy-ai/`.
 
-## Full Omarchy AI install
-
-The panel configures a daemon that this repository does not ship. Install
-the assistant from Omarchy AI, then come back to the bar icon:
-
-- Release install and source install:
-  [Omarchy AI — Installation](https://github.com/omribenami/Omarchy-AI#installation)
-- Project home: <https://github.com/omribenami/Omarchy-AI>
-
-After the daemon is running, open **Omarchy AI Settings** on the bar, choose
-a provider, save a key, and apply the change so the service restarts with it.
-
-## External dependency
+## Manual setup
 
 The widget shells out to the `omarchy-ai-settings` command from the Omarchy
 AI install. Without that daemon and CLI, the icon can sit on the bar and
-every load, save, and restart from the panel fails.
+every load, save, and restart from the panel fails. Marketplace install
+does not run the daemon.
 
 `Panel.qml` still calls the CLI through an install-time placeholder:
 
