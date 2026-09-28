@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "omarchy-ai.settings",
   "name": "Omarchy AI Settings",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "author": "Omri Ben Ami",
   "description": "Wake word models, Watch Dogs and assistant HUDs, and voice settings for the Omarchy AI assistant.",
   "kinds": [

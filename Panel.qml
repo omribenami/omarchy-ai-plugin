@@ -42,8 +42,8 @@ Panel {
 
   property var _queue: []
 
-  function _enqueue(argv, cb, env) {
-    root._queue.push({ argv: argv, cb: cb, env: env || ({}) })
+  function _enqueue(argv, cb, stdinText) {
+    root._queue.push({ argv: argv, cb: cb, stdinText: stdinText })
     root._processQueue()
   }
 
@@ -52,8 +52,8 @@ Panel {
     if (root._queue.length === 0) return
     var next = root._queue.shift()
     settingsProc._cb = next.cb
+    settingsProc._stdinText = next.stdinText
     settingsProc.command = next.argv
-    settingsProc.environment = next.env || ({})
     settingsProc.running = true
     settingsTimeout.restart()
   }
@@ -68,8 +68,15 @@ Panel {
 
   Process {
     id: settingsProc
+    stdinEnabled: true
+    onStarted: {
+      if (_stdinText !== undefined && _stdinText !== null) write(_stdinText + "\n")
+      // Do not retain a second copy of a secret for the lifetime of the helper.
+      _stdinText = null
+    }
     onRunningChanged: if (!running) settingsExitTimer.restart()
     property var _cb: null
+    property var _stdinText: null
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -160,7 +167,7 @@ Panel {
         root.statusTone = "error"
         root.statusMessage = "No response from settings helper"
       }
-    }, root.omarchySelected ? { "AI_GATEWAY_API_KEY": trimmed } : (root.geminiSelected ? { "GEMINI_API_KEY": trimmed } : { "OMARCHY_AI_API_KEY": trimmed }))
+    }, trimmed)
   }
 
   function saveGatewayKey(key) {
@@ -187,7 +194,7 @@ Panel {
         root.statusTone = "error"
         root.statusMessage = "No response from settings helper"
       }
-    }, { "AI_GATEWAY_API_KEY": trimmed })
+    }, trimmed)
   }
 
   // Quickshell's panel-level keyboard surface can prevent a compositor from
@@ -238,7 +245,7 @@ Panel {
         root.statusTone = "error"
         root.statusMessage = "Could not approve sudo"
       }
-    }, { "OMARCHY_AI_SUDO_PASSWORD": password })
+    }, password)
   }
 
   function forgetSudo() {
@@ -271,7 +278,7 @@ Panel {
         root.statusTone = "error"
         root.statusMessage = "Could not save the approval PIN"
       }
-    }, { "OMARCHY_AI_APPROVAL_PIN": pin })
+    }, pin)
   }
 
   function forgetApprovalPin() {
