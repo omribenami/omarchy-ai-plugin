@@ -80,7 +80,7 @@ a key, and apply the change so the service restarts with it.
 `omarchy plugin add` installs this bar widget and nothing else:
 
 ```bash
-omarchy plugin add https://github.com/omribenami/omarchy-ai-settings.git --enable
+omarchy plugin add https://github.com/omribenami/omarchy-ai-plugin.git --enable
 ```
 
 Omarchy clones this repository into
