@@ -11,7 +11,11 @@ Panel {
   ipcTarget: "omarchy-ai.settings"
   manageIpc: false // This panel supplies its own handler including setLive.
 
-  readonly property string py: "@OMARCHY_AI_SETTINGS@"
+  // resolve-settings.sh finds omarchy-ai-settings at runtime. Marketplace
+  // install does not rewrite a path into this file.
+  property bool helperChecked: false
+  property bool assistantMissing: false
+  readonly property bool settingsReady: helperChecked && !assistantMissing
 
   property var snapshot: ({})
   property bool loaded: false
@@ -78,7 +82,21 @@ Panel {
   }
 
   function _enqueue(argv, cb, stdinText) {
-    root._queue.push({ argv: argv, cb: cb, stdinText: stdinText })
+    var command = ["/usr/bin/bash", root._localPath("resolve-settings.sh")]
+    for (var i = 0; i < argv.length; i++)
+      command.push(String(argv[i]))
+    var wrapped = function(result) {
+      root.helperChecked = true
+      if (result && result.assistant_installed === false) {
+        root.assistantMissing = true
+        root.loaded = false
+        root.statusTone = "info"
+        root.statusMessage = ""
+        return
+      }
+      if (cb) cb(result)
+    }
+    root._queue.push({ argv: command, cb: wrapped, stdinText: stdinText })
     root._processQueue()
   }
 
@@ -163,8 +181,9 @@ Panel {
   }
 
   function fetchSnapshot() {
-    root._enqueue([root.py, "get"], function(result) {
+    root._enqueue(["get"], function(result) {
       if (result && !result.error) {
+        root.assistantMissing = false
         root.snapshot = result
         root.loaded = true
       } else if (result) {
@@ -175,7 +194,7 @@ Panel {
   }
 
   function setField(key, jsonValue, successMessage) {
-    root._enqueue([root.py, "set", key, jsonValue], function(result) {
+    root._enqueue(["set", key, jsonValue], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -201,7 +220,7 @@ Panel {
     root.statusTone = "info"
     root.statusMessage = "Saving conversation key…"
     var command = root.omarchySelected ? "set-vercel-gateway-api-key" : root.geminiSelected ? "set-gemini-api-key" : "set-api-key"
-    root._enqueue([root.py, command], function(result) {
+    root._enqueue([command], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -228,7 +247,7 @@ Panel {
     }
     root.statusTone = "info"
     root.statusMessage = "Saving Jev Gateway key…"
-    root._enqueue([root.py, "set-vercel-gateway-api-key"], function(result) {
+    root._enqueue(["set-vercel-gateway-api-key"], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -310,7 +329,7 @@ Panel {
       root.statusMessage = "Enter your password first"
       return
     }
-    root._enqueue([root.py, "configure-sudo"], function(result) {
+    root._enqueue(["configure-sudo"], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -327,7 +346,7 @@ Panel {
   }
 
   function forgetSudo() {
-    root._enqueue([root.py, "forget-sudo"], function(result) {
+    root._enqueue(["forget-sudo"], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -344,7 +363,7 @@ Panel {
       root.statusMessage = "The approval PIN needs at least 4 characters"
       return
     }
-    root._enqueue([root.py, "set-approval-pin"], function(result) {
+    root._enqueue(["set-approval-pin"], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -360,7 +379,7 @@ Panel {
   }
 
   function forgetApprovalPin() {
-    root._enqueue([root.py, "forget-approval-pin"], function(result) {
+    root._enqueue(["forget-approval-pin"], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -381,7 +400,7 @@ Panel {
   function pairPhone() {
     root.pairing = true
     root.qrImageBase64 = ""
-    root._enqueue([root.py, "pair-phone"], function(result) {
+    root._enqueue(["pair-phone"], function(result) {
       root.pairing = false
       if (result && result.error) {
         root.statusTone = "error"
@@ -397,7 +416,7 @@ Panel {
   }
 
   function revokePhones() {
-    root._enqueue([root.py, "revoke-phones"], function(result) {
+    root._enqueue(["revoke-phones"], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -410,7 +429,7 @@ Panel {
   }
 
   function setWakeModels(vals) {
-    root._enqueue([root.py, "set", "custom_wake_model_paths", JSON.stringify(vals)], function(result) {
+    root._enqueue(["set", "custom_wake_model_paths", JSON.stringify(vals)], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
         root.statusMessage = result.error
@@ -428,7 +447,7 @@ Panel {
     root.restarting = true
     root.statusTone = "info"
     root.statusMessage = "Restarting…"
-    root._enqueue([root.py, "restart"], function(result) {
+    root._enqueue(["restart"], function(result) {
       root.restarting = false
       if (result && result.restarted) {
         root.dirty = false
@@ -502,7 +521,7 @@ Panel {
     }
     slotSize: Style.bar.statusSlot
     fontSize: Style.font.caption
-    tooltipText: "Omarchy AI"
+    tooltipText: "Omarchy-AI"
     onPressed: root.toggle()
   }
 
@@ -515,7 +534,7 @@ Panel {
   Timer { interval: 3000; running: root.opened; repeat: true; onTriggered: if (!settingsProc.running && root._queue.length === 0) root.fetchSnapshot() }
   function activateAssistant() {
     root.activating = true
-    root._enqueue([root.py, "activate"], function(result) {
+    root._enqueue(["activate"], function(result) {
       root.activating = false
       root.statusTone = result.error ? "error" : "ok"
       root.statusMessage = result.error || "Starting Omachy — speak into your computer microphone"
@@ -551,12 +570,66 @@ Panel {
             spacing: Style.space(4)
             Text { text: "Omachy"; color: root.fg; font.family: root.bar.fontFamily; font.pixelSize: Style.font.title; font.bold: true }
             Text {
-              text: root.assistantState === "active" ? "Conversation active" : root.assistantState === "starting" ? "Connecting…" : root.assistantState === "listening" ? "Ready · listening for your wake word" : "Assistant offline"
+              text: !root.helperChecked ? "Checking for Omarchy-AI…" : root.assistantMissing ? "Assistant not installed" : root.assistantState === "active" ? "Conversation active" : root.assistantState === "starting" ? "Connecting…" : root.assistantState === "listening" ? "Ready · listening for your wake word" : "Assistant offline"
               color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.72); font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
             }
           }
         }
+        Text {
+          visible: !root.helperChecked
+          width: parent.width
+          wrapMode: Text.WordWrap
+          textFormat: Text.PlainText
+          text: "Looking for Omarchy-AI…"
+          color: Color.muted
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+        Column {
+          visible: root.assistantMissing
+          width: parent.width
+          spacing: Style.space(8)
+          Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: "Omarchy-AI is not installed"
+            color: root.fg
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.body
+            font.bold: true
+          }
+          Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: "This bar widget is only the settings panel. It does not install the voice assistant, wake models, or the other desktop plugins."
+            color: Color.muted
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+          Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: "Install the full assistant from GitHub Releases, or from a source checkout with install.sh. Then reopen this panel."
+            color: root.fg
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+          Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            selectByMouse: true
+            text: "https://github.com/omribenami/Omarchy-AI#installation"
+            color: Color.accent
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+        }
         Button {
+          visible: root.settingsReady
           width: parent.width
           text: root.activating || root.assistantState === "starting" ? "Starting…" : root.assistantState === "active" ? "Omachy is active" : "Activate Omachy"
           iconText: "󰍬"; bordered: true; selected: true; focusable: true
@@ -566,12 +639,14 @@ Panel {
           onClicked: root.activateAssistant()
         }
         Text {
+          visible: root.settingsReady
           width: parent.width; wrapMode: Text.WordWrap
           text: (root.snapshot.assistant && root.snapshot.assistant.error_detail) || (root.dirty ? "Changes saved · apply below to use them" : "Running provider: " + ((root.snapshot.assistant && root.snapshot.assistant.provider) || "offline"))
           color: root.snapshot.assistant && root.snapshot.assistant.error_detail ? Color.urgent : Color.muted
           font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
         }
         Column {
+          visible: root.settingsReady
           width: parent.width; spacing: Style.space(6)
           PanelSectionHeader { text: "AI PROVIDER & ACCESS"; foreground: root.fg; fontFamily: root.bar.fontFamily }
           Dropdown { width: parent.width; showLabel: true; label: "Conversation model"; foreground: root.fg; background: Color.popups.background; fontFamily: root.bar.fontFamily; value: root.selectedProvider; options: [{value: "openai", label: "OpenAI Live"}, {value: "gemini", label: "Gemini Live"}, {value: "omarchy", label: "Gateway voice"}]; onChanged: function(v) { root.setField("provider", JSON.stringify(v), "Conversation model updated — restart to apply") } }
@@ -599,14 +674,16 @@ Panel {
           }
         }
         ButtonGroup {
+          visible: root.settingsReady
           width: parent.width; foreground: root.fg; fontFamily: root.bar.fontFamily
           fontSize: Style.font.bodySmall; value: root.section
           options: [{value: "voice", label: "Voice"}, {value: "connections", label: "Connections"}, {value: "appearance", label: "Appearance"}]
           onChanged: function(v) { root.section = v; scrollArea.contentY = 0 }
         }
-        PanelSeparator { foreground: root.fg }
+        PanelSeparator { foreground: root.fg; visible: root.settingsReady }
         Flickable {
           id: scrollArea
+          visible: root.settingsReady
           width: parent.width
           height: Math.min(scrollColumn.implicitHeight, Math.max(Style.space(100), panel.availableCardHeight - Style.space(480)))
           contentWidth: width; contentHeight: scrollColumn.implicitHeight
@@ -1075,7 +1152,7 @@ Panel {
           }
         }
         Button {
-          visible: root.dirty || root.assistantState === "offline"
+          visible: root.settingsReady && (root.dirty || root.assistantState === "offline")
           width: parent.width; text: root.restarting ? "Restarting…" : root.dirty ? "Apply saved changes" : "Start assistant"
           bordered: true; focusable: true; foreground: root.fg; fontFamily: root.bar.fontFamily
           // Applying a saved preference must remain clickable while the
