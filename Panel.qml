@@ -42,6 +42,41 @@ Panel {
 
   property var _queue: []
 
+  // Producer ceilings enforced by bounded-stdio.sh before this shell reads
+  // either stream. head -c (MAX + 1) rejects overflow; timeout -k is the
+  // deadline (SIGTERM, then SIGKILL) in its own session. The timers below
+  // only fail the panel closed if that supervisor itself does not return.
+  readonly property int apiKeyMaxBytes: 4096
+  readonly property int pasteDeadlineSec: 2
+  readonly property int settingsMaxBytes: 262144
+  readonly property int settingsDeadlineSec: 20
+
+  function _localPath(name) {
+    var path = Qt.resolvedUrl(name).toString()
+    if (path.indexOf("file://") === 0)
+      path = decodeURIComponent(path.substring(7))
+    return path
+  }
+
+  function _boundedCommand(mode, argv) {
+    var command = ["/usr/bin/bash", root._localPath("bounded-stdio.sh"), mode, "--"]
+    for (var i = 0; i < argv.length; i++)
+      command.push(String(argv[i]))
+    return command
+  }
+
+  function _framed(text) {
+    var raw = text || ""
+    var nl = raw.indexOf("\n")
+    if (nl < 0)
+      return { ok: false, body: "", error: "" }
+    return {
+      ok: raw.substring(0, nl) === "0",
+      body: raw.substring(nl + 1),
+      error: raw.substring(nl + 1).trim()
+    }
+  }
+
   function _enqueue(argv, cb, stdinText) {
     root._queue.push({ argv: argv, cb: cb, stdinText: stdinText })
     root._processQueue()
@@ -51,15 +86,18 @@ Panel {
     if (settingsProc.running || settingsProc._cb !== null) return
     if (root._queue.length === 0) return
     var next = root._queue.shift()
+    settingsProc._settled = false
     settingsProc._cb = next.cb
     settingsProc._stdinText = next.stdinText
-    settingsProc.command = next.argv
+    settingsProc.command = root._boundedCommand("helper", next.argv)
     settingsProc.running = true
     settingsTimeout.restart()
   }
 
   function _finishProcess(result) {
     settingsTimeout.stop()
+    if (settingsProc._settled) return
+    settingsProc._settled = true
     var cb = settingsProc._cb
     settingsProc._cb = null
     if (cb) cb(result)
@@ -77,14 +115,23 @@ Panel {
     onRunningChanged: if (!running) settingsExitTimer.restart()
     property var _cb: null
     property var _stdinText: null
+    property bool _settled: false
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (settingsProc._settled) return
+        var framed = root._framed(text)
         var result = null
-        try {
-          result = text.trim() ? JSON.parse(text) : { error: "Settings helper returned no response" }
-        } catch (e) {
-          result = { error: "settings helper returned invalid output" }
+        if (!framed.ok) {
+          result = { error: framed.error || "Settings helper failed" }
+        } else if (framed.body.length > root.settingsMaxBytes) {
+          result = { error: "Settings helper output exceeded " + root.settingsMaxBytes + " bytes" }
+        } else {
+          try {
+            result = framed.body.trim() ? JSON.parse(framed.body) : { error: "Settings helper returned no response" }
+          } catch (e) {
+            result = { error: "settings helper returned invalid output" }
+          }
         }
         if (settingsProc._cb !== null) root._finishProcess(result)
       }
@@ -96,7 +143,9 @@ Panel {
     interval: 250
     repeat: false
     onTriggered: {
-      if (settingsProc._cb !== null)
+      // A timeout may already have settled the callback while the process
+      // was still exiting. Still drain the queue once `running` is false.
+      if (!settingsProc._settled && settingsProc._cb !== null)
         root._finishProcess({ error: "Settings helper exited without a response" })
       else root._processQueue()
     }
@@ -104,7 +153,7 @@ Panel {
 
   Timer {
     id: settingsTimeout
-    interval: 30000
+    interval: (root.settingsDeadlineSec + 4) * 1000
     repeat: false
     onTriggered: {
       if (settingsProc._cb !== null)
@@ -202,27 +251,56 @@ Panel {
   // Wayland clipboard path here as a reliable fallback; the value remains
   // only in this masked field and is never printed or logged.
   function pasteApiKey(target) {
+    if (pasteKeyProc.running) return
     root.pasteTarget = target
-    if (!pasteKeyProc.running) pasteKeyProc.running = true
+    pasteKeyProc._settled = false
+    pasteKeyProc.command = root._boundedCommand("paste", ["/usr/bin/wl-paste", "--no-newline", "--type", "text"])
+    pasteKeyProc.running = true
+    pasteTimeout.restart()
+  }
+
+  function _finishPaste(message, value) {
+    if (pasteKeyProc._settled) return
+    pasteKeyProc._settled = true
+    pasteTimeout.stop()
+    if (message) {
+      root.statusTone = "error"
+      root.statusMessage = message
+    } else if (root.pasteTarget) {
+      root.pasteTarget.text = value
+      root.pasteTarget.forceActiveFocus()
+    }
+    root.pasteTarget = null
   }
 
   Process {
     id: pasteKeyProc
-    command: ["wl-paste", "--no-newline", "--type", "text"]
+    property bool _settled: false
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        if (text && text.length > 0) {
-          if (root.pasteTarget) {
-            root.pasteTarget.text = text
-            root.pasteTarget.forceActiveFocus()
-          }
-        } else {
-          root.statusTone = "error"
-          root.statusMessage = "Clipboard has no text to paste"
+        var framed = root._framed(text)
+        if (!framed.ok) {
+          root._finishPaste(framed.error || "Clipboard read failed", "")
+          return
         }
-        root.pasteTarget = null
+        if (!framed.body || framed.body.length === 0)
+          root._finishPaste("Clipboard has no text to paste", "")
+        else if (framed.body.length > root.apiKeyMaxBytes)
+          root._finishPaste("Clipboard text is too long to be an API key", "")
+        else
+          root._finishPaste("", framed.body)
       }
+    }
+  }
+
+  Timer {
+    id: pasteTimeout
+    interval: (root.pasteDeadlineSec + 2) * 1000
+    repeat: false
+    onTriggered: {
+      root._finishPaste("Clipboard read timed out", "")
+      if (pasteKeyProc.running) pasteKeyProc.running = false
     }
   }
 
@@ -382,6 +460,10 @@ Panel {
   }
 
   onOpenedChanged: if (opened) { root.statusMessage = ""; root.statusTone = "info"; fetchSnapshot() }
+  Component.onDestruction: {
+    if (settingsProc.running) settingsProc.running = false
+    if (pasteKeyProc.running) pasteKeyProc.running = false
+  }
 
   visible: true
   implicitWidth: button.implicitWidth
