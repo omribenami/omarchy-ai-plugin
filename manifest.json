@@ -4,7 +4,7 @@
   "name": "Omarchy AI",
   "version": "0.4.0",
   "author": "Omri Ben Ami",
-  "description": "Omarchy AI is a voice assistant for the Omarchy desktop: wake word, overlays, settings, and desktop integration. This marketplace entry is the settings panel that ships with it. Install the full assistant first; this bar widget alone does not run the daemon.",
+  "description": "Self-hosted agentic voice assistant for the Omarchy desktop. Wake word, whole-machine tools, Task Runtime, phone and TV. This marketplace entry is the settings panel. Install the full assistant first; the widget alone does not run the daemon.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Omarchy AI",
-    "description": "Voice assistant for Omarchy: wake word, overlays, settings, and desktop integration. This bar entry is the settings panel that ships with Omarchy AI. Install the full assistant first; the widget alone does not run the daemon.",
+    "description": "Self-hosted agentic voice assistant for Omarchy: wake word, overlays, Task Runtime, phone and TV, and settings. Install the full assistant first; this bar widget alone does not run the daemon.",
     "category": "System",
     "allowMultiple": false
   }

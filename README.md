@@ -1,14 +1,64 @@
 # Omarchy AI
 
-Voice assistant for the [Omarchy](https://omarchy.org) desktop. Say the wake
-word, use the conversation overlays, change settings from the bar, and let
-it work on the desktop.
+**Omarchy AI** is a self-hosted, voice-driven **agentic assistant** for
+[Omarchy](https://omarchy.org), the Arch-based Hyprland desktop. You say what
+you want done, from the desk, from your phone, or from the TV across the
+room. It plans the work, does it with real tools on your machine, checks the
+result itself, and tells you when it is verified. It is not a chatbot bolted
+onto a terminal.
 
-**Install the full assistant first.** This page is the front door for
-[Omarchy AI](https://github.com/omribenami/Omarchy-AI). The marketplace still
+Project home: <https://github.com/omribenami/Omarchy-AI>
+
+<div align="center">
+
+https://github.com/user-attachments/assets/ea736181-9cf3-423a-b7d5-91a895fe6589
+
+</div>
+
+This page is that product's marketplace front door. The marketplace still
 lists one Quattro plugin, the settings panel (`omarchy-ai.settings`).
 `omarchy plugin add` does not install the daemon, wake models, or the rest
 of the desktop plugins. A settings icon by itself does nothing useful.
+Install the full assistant first.
+
+## Features
+
+- **It operates the whole machine.** Desktop, windows and workspaces, its
+  own terminals and yours, a real browser, files, system administration,
+  and code through Claude Code or Codex, with about 90 typed tools and all
+  of Omarchy's ~230 commands behind one voice.
+- **Whole jobs, not single commands.** A background Task Runtime plans the
+  job, routes each step to the right worker, and certifies the result from
+  evidence, not from its own claims.
+- **Wake word and overlays.** Say the wake word ("omachy"), press
+  **Super + `**, or type with **Super + Ctrl + `**. Watchdog, task, and
+  routine HUDs stay on screen, and a waiting approval floats as an envelope.
+- **Asks before anything risky.** Installs, pushes, service restarts,
+  deletes, and root need your OK. A waiting approval is announced out loud
+  with Approve / Deny; root needs a click, not just a spoken yes.
+- **Works alongside you.** Its commands run in its own terminals, so it
+  never takes your keyboard. "Tell me when the build finishes" sets up a
+  real watch, and the assistant wakes up to do the next step you asked for.
+- **Phone and TV.** From a paired phone, talk or type, watch the desktop
+  live, or send the picture to the TV. Cast screen and audio to a paired
+  Android TV or projector. While casting, the TV's microphone can carry the
+  conversation.
+
+**Phone session**: mirror the screen to your phone and operate the PC by talking to Omarchy.
+
+<div align="center">
+
+https://github.com/user-attachments/assets/7abed3fa-ed55-4835-b77a-4d0a1ab85f1f
+
+</div>
+
+**Phone bridge**: talk from a paired phone to Omarchy while mirroring the PC to Android TVs in your network.
+
+<div align="center">
+
+https://github.com/user-attachments/assets/6d20a7b9-3806-4248-be12-83bdddf63f66
+
+</div>
 
 ## Install the full assistant
 
@@ -22,6 +72,8 @@ this settings panel, and points the panel at the settings command. That is
 the install that runs Omarchy AI. After the daemon is running, open
 **Omarchy AI** on the bar, choose a provider, save a key, and apply the
 change so the service restarts with it.
+
+`omarchy plugin add` is not that install. It does not run the daemon.
 
 ## Settings panel only
 
