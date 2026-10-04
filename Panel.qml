@@ -621,7 +621,6 @@ Panel {
             width: parent.width
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
-            selectByMouse: true
             text: "https://github.com/omribenami/Omarchy-AI#installation"
             color: Color.accent
             font.family: root.bar.fontFamily
