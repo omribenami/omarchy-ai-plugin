@@ -27,8 +27,12 @@ Panel {
   readonly property string selectedProvider: fields.provider || "openai"
   readonly property bool geminiSelected: fields.provider === "gemini"
   readonly property bool omarchySelected: fields.provider === "omarchy"
-  readonly property var selectedKey: omarchySelected ? (snapshot.vercel_gateway_api_key || ({})) : geminiSelected ? (snapshot.gemini_api_key || ({})) : (snapshot.api_key || ({}))
+  readonly property var selectedKey: geminiSelected ? (snapshot.gemini_api_key || ({})) : (snapshot.api_key || ({}))
   readonly property var gatewayKey: snapshot.vercel_gateway_api_key || ({})
+  // The voice fallback chain (voice/fallback.py), in order, with what each step needs.
+  readonly property var fallbackSteps: snapshot.voice_fallback || []
+  readonly property bool fallbackReady: fallbackSteps.filter(function(step) { return step.ready }).length > 1
+  readonly property string fallbackSummary: fallbackSteps.length === 0 ? "" : "If the voice model fails: " + fallbackSteps.map(function(step) { return step.label + " (" + step.key + (step.ready ? "" : ", missing") + ")" }).join("  →  ")
   onSelectedProviderChanged: { apiKeyEditing = false; apiKeyFieldTop.text = "" }
   property string statusMessage: ""
   property string statusTone: "info" // "info" | "ok" | "error"
@@ -219,7 +223,7 @@ Panel {
     }
     root.statusTone = "info"
     root.statusMessage = "Saving conversation key…"
-    var command = root.omarchySelected ? "set-vercel-gateway-api-key" : root.geminiSelected ? "set-gemini-api-key" : "set-api-key"
+    var command = root.geminiSelected ? "set-gemini-api-key" : "set-api-key"
     root._enqueue([command], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
@@ -246,7 +250,7 @@ Panel {
       return
     }
     root.statusTone = "info"
-    root.statusMessage = "Saving Jev Gateway key…"
+    root.statusMessage = "Saving Gateway key…"
     root._enqueue(["set-vercel-gateway-api-key"], function(result) {
       if (result && result.error) {
         root.statusTone = "error"
@@ -255,7 +259,7 @@ Panel {
         root.snapshot = result
         root.dirty = true
         root.statusTone = "ok"
-        root.statusMessage = "Jev Gateway key saved — restart to apply"
+        root.statusMessage = "Gateway key saved — restart to apply"
         gatewayKeyField.text = ""
         root.gatewayKeyEditing = false
       } else {
@@ -650,21 +654,22 @@ Panel {
           PanelSectionHeader { text: "AI PROVIDER & ACCESS"; foreground: root.fg; fontFamily: root.bar.fontFamily }
           Dropdown { width: parent.width; showLabel: true; label: "Conversation model"; foreground: root.fg; background: Color.popups.background; fontFamily: root.bar.fontFamily; value: root.selectedProvider; options: [{value: "openai", label: "OpenAI Live"}, {value: "gemini", label: "Gemini Live"}, {value: "omarchy", label: "Gateway voice"}]; onChanged: function(v) { root.setField("provider", JSON.stringify(v), "Conversation model updated — restart to apply") } }
           Dropdown { visible: root.omarchySelected; width: parent.width; showLabel: true; label: "Gateway reply model"; foreground: root.fg; background: Color.popups.background; fontFamily: root.bar.fontFamily; value: root.fields.omarchy_model_choice || "gemini"; options: [{value: "gemini", label: "Gemini (Gateway)"}, {value: "openai", label: "OpenAI (Gateway)"}, {value: "jev", label: "Jev policy + Gateway text"}]; onChanged: function(v) { root.setField("omarchy_model_choice", JSON.stringify(v), "Model updated — restart to apply") } }
-          Text { width: parent.width; wrapMode: Text.WordWrap; text: root.selectedKey.set ? "Conversation key saved" : root.omarchySelected ? "Enter your Vercel AI Gateway key for Gateway voice." : root.geminiSelected ? "Enter your Google AI Studio key for Gemini Live." : "Enter your OpenAI key for OpenAI Live."; color: root.selectedKey.set ? Color.muted : Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall }
+          Text { width: parent.width; wrapMode: Text.WordWrap; text: root.gatewayKey.set ? "Vercel AI Gateway key saved. One key for Jev, the OpenAI backup voice, and the Gateway speech, text and vision models." : "Enter your Vercel AI Gateway key: the one key for Jev (desktop and browser decisions), the OpenAI backup voice, and the Gateway speech, text and vision models."; color: root.gatewayKey.set ? Color.muted : Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall }
           Row {
+            width: parent.width; spacing: Style.space(8)
+            TextField { id: gatewayKeyField; visible: !root.gatewayKey.set || root.gatewayKeyEditing; width: parent.width - saveGatewayButton.width - pasteGatewayButton.width - Style.space(16); password: true; placeholderText: "Vercel AI Gateway key"; foreground: root.fg; font.family: root.bar.fontFamily; onAccepted: root.saveGatewayKey(text) }
+            Button { id: pasteGatewayButton; text: "Paste"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: root.pasteApiKey(gatewayKeyField) }
+            Button { id: saveGatewayButton; text: root.gatewayKey.set && !root.gatewayKeyEditing ? "Edit key" : "Save key"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: { if (root.gatewayKey.set && !root.gatewayKeyEditing) root.gatewayKeyEditing = true; else root.saveGatewayKey(gatewayKeyField.text) } }
+          }
+          Text { visible: !root.omarchySelected; width: parent.width; wrapMode: Text.WordWrap; text: root.geminiSelected ? (root.selectedKey.set ? "Google AI Studio key saved. Gemini Live and its older backup models connect to Google directly." : "Enter your Google AI Studio key for Gemini Live. Without it, conversations run on the OpenAI backup voice through the Gateway key.") : (root.selectedKey.set ? "OpenAI key saved for OpenAI Live." : "Enter your OpenAI key for OpenAI Live."); color: root.selectedKey.set ? Color.muted : Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall }
+          Row {
+            visible: !root.omarchySelected
             width: parent.width; spacing: Style.space(8)
             TextField { id: apiKeyFieldTop; visible: !root.selectedKey.set || root.apiKeyEditing; width: parent.width - saveKeyButtonTop.width - pasteKeyButtonTop.width - Style.space(16); password: true; placeholderText: root.omarchySelected ? "Vercel AI Gateway key" : root.geminiSelected ? "Google AI Studio key" : "OpenAI key"; foreground: root.fg; font.family: root.bar.fontFamily; onAccepted: root.saveApiKey(text) }
             Button { id: pasteKeyButtonTop; text: "Paste"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: root.pasteApiKey(apiKeyFieldTop) }
             Button { id: saveKeyButtonTop; text: root.selectedKey.set && !root.apiKeyEditing ? "Edit key" : "Save key"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: { if (root.selectedKey.set && !root.apiKeyEditing) root.apiKeyEditing = true; else root.saveApiKey(apiKeyFieldTop.text) } }
           }
-          Text { visible: !root.omarchySelected; width: parent.width; wrapMode: Text.WordWrap; text: root.gatewayKey.set ? "Jev access key saved. Jev uses Vercel AI Gateway for desktop and browser decisions." : "Jev desktop and browser actions need a Vercel AI Gateway key. A separate TypeSafe token is not used by this integration."; color: root.gatewayKey.set ? Color.muted : Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall }
-          Row {
-            visible: !root.omarchySelected
-            width: parent.width; spacing: Style.space(8)
-            TextField { id: gatewayKeyField; visible: !root.gatewayKey.set || root.gatewayKeyEditing; width: parent.width - saveGatewayButton.width - pasteGatewayButton.width - Style.space(16); password: true; placeholderText: "Jev / Vercel AI Gateway key"; foreground: root.fg; font.family: root.bar.fontFamily; onAccepted: root.saveGatewayKey(text) }
-            Button { id: pasteGatewayButton; text: "Paste"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: root.pasteApiKey(gatewayKeyField) }
-            Button { id: saveGatewayButton; text: root.gatewayKey.set && !root.gatewayKeyEditing ? "Edit key" : "Save key"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: { if (root.gatewayKey.set && !root.gatewayKeyEditing) root.gatewayKeyEditing = true; else root.saveGatewayKey(gatewayKeyField.text) } }
-          }
+          Text { visible: root.geminiSelected && root.fallbackSummary.length > 0; width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText; text: root.fallbackSummary; color: root.fallbackReady ? Color.muted : Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall }
           Text {
             visible: root.statusMessage.length > 0
             width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
