@@ -399,24 +399,32 @@ Panel {
   property string qrImageBase64: ""
   property string qrUrl: ""
   property real qrExpiresAt: 0
+  property string qrPerson: ""
   readonly property int pairedCount: snapshot.phone_bridge_paired_count || 0
 
-  function pairPhone() {
+  function pairPhone(person) {
     root.pairing = true
     root.qrImageBase64 = ""
-    root._enqueue(["pair-phone"], function(result) {
-      root.pairing = false
-      if (result && result.error) {
-        root.statusTone = "error"
-        root.statusMessage = result.error
-      } else if (result) {
-        root.qrImageBase64 = result.qr_png_base64
-        root.qrUrl = result.url
-        root.qrExpiresAt = result.expires_at
-        root.statusTone = "info"
-        root.statusMessage = "Scan within 5 minutes"
-      }
-    })
+    root.qrPerson = person || ""
+    if (person) {
+      root._enqueue(["pair-phone", "--person", person], root._pairDone)
+      return
+    }
+    root._enqueue(["pair-phone"], function(result) { root._pairDone(result) })
+  }
+
+  function _pairDone(result) {
+    root.pairing = false
+    if (result && result.error) {
+      root.statusTone = "error"
+      root.statusMessage = result.error
+    } else if (result) {
+      root.qrImageBase64 = result.qr_png_base64
+      root.qrUrl = result.url
+      root.qrExpiresAt = result.expires_at
+      root.statusTone = "info"
+      root.statusMessage = "Scan within 5 minutes"
+    }
   }
 
   function revokePhones() {
@@ -429,6 +437,45 @@ Panel {
         root.statusTone = "ok"
         root.statusMessage = "All paired phones revoked"
       }
+    })
+  }
+
+  readonly property var identities: snapshot.identities || ({})
+  readonly property var identityPeople: identities.people || []
+  readonly property var unattachedPhones: identities.unattached_phones || []
+  property bool reindexing: false
+
+  function identityCommand(argv, successMessage) {
+    root._enqueue(argv, function(result) {
+      if (result && result.error) {
+        root.statusTone = "error"
+        root.statusMessage = result.error
+      } else if (result) {
+        root.snapshot = result
+        root.statusTone = "ok"
+        root.statusMessage = successMessage
+      }
+    })
+  }
+
+  function addPerson(name) {
+    var key = String(name || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "")
+    if (key.length === 0) {
+      root.statusTone = "error"
+      root.statusMessage = "Enter a name first"
+      return
+    }
+    root.identityCommand(["identity-add", "--", key, String(name).trim()], "Added " + String(name).trim())
+  }
+
+  function reindexVoices() {
+    root.reindexing = true
+    root._enqueue(["enroll-speakers"], function(result) {
+      root.reindexing = false
+      root.statusTone = result && !result.error ? "ok" : "error"
+      root.statusMessage = !result ? "No response from settings helper" : result.error ? result.error : "Voices indexed — restart to apply"
+      if (result && !result.error) root.dirty = true
+      root.fetchSnapshot()
     })
   }
 
@@ -654,7 +701,7 @@ Panel {
           PanelSectionHeader { text: "AI PROVIDER & ACCESS"; foreground: root.fg; fontFamily: root.bar.fontFamily }
           Dropdown { width: parent.width; showLabel: true; label: "Conversation model"; foreground: root.fg; background: Color.popups.background; fontFamily: root.bar.fontFamily; value: root.selectedProvider; options: [{value: "openai", label: "OpenAI Live"}, {value: "gemini", label: "Gemini Live"}, {value: "omarchy", label: "Gateway voice"}]; onChanged: function(v) { root.setField("provider", JSON.stringify(v), "Conversation model updated — restart to apply") } }
           Dropdown { visible: root.omarchySelected; width: parent.width; showLabel: true; label: "Gateway reply model"; foreground: root.fg; background: Color.popups.background; fontFamily: root.bar.fontFamily; value: root.fields.omarchy_model_choice || "gemini"; options: [{value: "gemini", label: "Gemini (Gateway)"}, {value: "openai", label: "OpenAI (Gateway)"}, {value: "jev", label: "Jev policy + Gateway text"}]; onChanged: function(v) { root.setField("omarchy_model_choice", JSON.stringify(v), "Model updated — restart to apply") } }
-          Text { width: parent.width; wrapMode: Text.WordWrap; text: root.gatewayKey.set ? "Vercel AI Gateway key saved. One key for Jev, the OpenAI backup voice, and the Gateway speech, text and vision models." : "Enter your Vercel AI Gateway key: the one key for Jev (desktop and browser decisions), the OpenAI backup voice, and the Gateway speech, text and vision models."; color: root.gatewayKey.set ? Color.muted : Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall }
+          Text { width: parent.width; wrapMode: Text.WordWrap; text: root.gatewayKey.set ? "Vercel AI Gateway key saved. One key for Jev (which also handles images), the OpenAI backup voice, and Gateway speech and text." : "Enter your Vercel AI Gateway key: the one key for Jev (desktop, browser and image decisions), the OpenAI backup voice, and Gateway speech and text."; color: root.gatewayKey.set ? Color.muted : Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall }
           Row {
             width: parent.width; spacing: Style.space(8)
             TextField { id: gatewayKeyField; visible: !root.gatewayKey.set || root.gatewayKeyEditing; width: parent.width - saveGatewayButton.width - pasteGatewayButton.width - Style.space(16); password: true; placeholderText: "Vercel AI Gateway key"; foreground: root.fg; font.family: root.bar.fontFamily; onAccepted: root.saveGatewayKey(text) }
@@ -681,7 +728,7 @@ Panel {
           visible: root.settingsReady
           width: parent.width; foreground: root.fg; fontFamily: root.bar.fontFamily
           fontSize: Style.font.bodySmall; value: root.section
-          options: [{value: "voice", label: "Voice"}, {value: "connections", label: "Connections"}, {value: "appearance", label: "Appearance"}]
+          options: [{value: "voice", label: "Voice"}, {value: "connections", label: "Connections"}, {value: "identities", label: "People"}, {value: "appearance", label: "Appearance"}]
           onChanged: function(v) { root.section = v; scrollArea.contentY = 0 }
         }
         PanelSeparator { foreground: root.fg; visible: root.settingsReady }
@@ -1035,6 +1082,188 @@ Panel {
         }
 
         PanelSeparator { foreground: root.fg; visible: root.section === "connections" }
+
+        Column {
+          visible: root.section === "identities"
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader { text: "PEOPLE"; foreground: root.fg; fontFamily: root.bar.fontFamily }
+
+          Text {
+            width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+            text: "Who lives here. A phone attached to someone is that person; anyone else is recognized by voice. A person's key is their voice folder under ~/.config/omarchy-ai/speakers/ and their entry in people.yaml."
+            color: Qt.darker(root.fg, 1.4); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+          }
+
+          Repeater {
+            model: (root.identities.warnings || []).concat(root.identities.error ? [root.identities.error] : [])
+            delegate: Text {
+              required property var modelData
+              width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+              text: modelData; color: Color.urgent; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
+          }
+
+          Repeater {
+            model: root.identityPeople
+            delegate: Rectangle {
+              id: personCard
+              required property var modelData
+              width: parent.width
+              height: personColumn.implicitHeight + Style.space(18)
+              radius: Style.cornerRadius
+              color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.05)
+
+              Column {
+                id: personColumn
+                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                anchors.margins: Style.space(9)
+                spacing: Style.space(6)
+
+                Row {
+                  width: parent.width; spacing: Style.space(8)
+                  Text {
+                    width: parent.width - removePersonButton.width - Style.space(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    elide: Text.ElideRight; textFormat: Text.PlainText
+                    text: personCard.modelData.name + (personCard.modelData.relation ? "  ·  " + personCard.modelData.relation : "") + "  (" + personCard.modelData.key + ")"
+                    color: root.fg; font.family: root.bar.fontFamily; font.pixelSize: Style.font.body; font.bold: true
+                  }
+                  Button { id: removePersonButton; text: "Remove"; bordered: true; foreground: "#ff6b6b"; fontFamily: root.bar.fontFamily; fontSize: Style.font.caption; onClicked: root.identityCommand(["identity-remove", personCard.modelData.key], "Removed " + personCard.modelData.name) }
+                }
+
+                Text {
+                  width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                  text: personCard.modelData.voice.text
+                  color: personCard.modelData.voice.state === "enrolled" ? root.fg : Qt.darker(root.fg, 1.4)
+                  font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+                }
+
+                Repeater {
+                  model: personCard.modelData.phones
+                  delegate: Row {
+                    required property var modelData
+                    width: personColumn.width; spacing: Style.space(8)
+                    Text {
+                      width: parent.width - detachPhoneButton.width - Style.space(8)
+                      anchors.verticalCenter: parent.verticalCenter
+                      elide: Text.ElideRight; textFormat: Text.PlainText
+                      text: "󰄜  " + modelData.name + (modelData.paired ? "" : " (no longer paired in Flux)")
+                      color: root.fg; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+                    }
+                    Button { id: detachPhoneButton; text: "Detach"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; fontSize: Style.font.caption; onClicked: root.identityCommand(["identity-detach-phone", modelData.id], "Phone detached") }
+                  }
+                }
+
+                Text {
+                  visible: personCard.modelData.qr_phones > 0
+                  width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                  text: personCard.modelData.qr_phones + (personCard.modelData.qr_phones === 1 ? " phone" : " phones") + " paired by QR for them"
+                  color: Qt.darker(root.fg, 1.4); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+                }
+
+                Dropdown {
+                  visible: root.unattachedPhones.length > 0
+                  width: parent.width; showLabel: false
+                  foreground: root.fg; background: Color.popups.background; fontFamily: root.bar.fontFamily
+                  value: ""
+                  options: [{value: "", label: "Attach a Flux phone…"}].concat(root.unattachedPhones.map(function(phone) { return {value: phone.id, label: phone.name} }))
+                  onChanged: function(v) { if (v) root.identityCommand(["identity-attach-phone", personCard.modelData.key, v], "Phone attached to " + personCard.modelData.name) }
+                }
+
+                Toggle {
+                  width: parent.width
+                  label: "MyApi owner"
+                  description: "Only one person owns the MyApi account."
+                  foreground: root.fg
+                  checked: !!personCard.modelData.owner
+                  onClicked: root.identityCommand(["identity-owner", personCard.modelData.owner ? "none" : personCard.modelData.key], personCard.modelData.owner ? "No MyApi owner" : personCard.modelData.name + " owns MyApi")
+                }
+
+                Button {
+                  visible: !!root.fields.phone_bridge_enabled
+                  text: root.pairing && root.qrPerson === personCard.modelData.key ? "Generating…" : "Pair a phone by QR"
+                  bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; fontSize: Style.font.caption
+                  enabled: !root.pairing
+                  onClicked: root.pairPhone(personCard.modelData.key)
+                }
+              }
+            }
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(6)
+            visible: root.qrImageBase64.length > 0 && root.qrPerson.length > 0
+
+            Image {
+              width: 180
+              height: 180
+              anchors.horizontalCenter: parent.horizontalCenter
+              source: root.qrImageBase64.length > 0 ? ("data:image/png;base64," + root.qrImageBase64) : ""
+              fillMode: Image.PreserveAspectFit
+              smooth: false
+            }
+
+            Text {
+              width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+              text: "Scan with " + root.qrPerson + "'s phone camera — expires in 5 minutes"
+              color: Qt.darker(root.fg, 1.4); font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+            }
+
+            Button { text: "Hide"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; anchors.horizontalCenter: parent.horizontalCenter; onClicked: root.qrImageBase64 = "" }
+          }
+
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+            TextField {
+              id: newPersonField
+              width: parent.width - addPersonButton.width - Style.space(8)
+              placeholderText: "Name"
+              foreground: root.fg
+              font.family: root.bar.fontFamily
+              onAccepted: { root.addPerson(text); text = "" }
+            }
+            Button { id: addPersonButton; text: "Add person"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: { root.addPerson(newPersonField.text); newPersonField.text = "" } }
+          }
+
+          Flow {
+            width: parent.width; spacing: Style.space(6)
+            visible: (root.identities.unlisted || []).length > 0
+            Text {
+              width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+              text: "In people.yaml or a voice folder, not added yet:"
+              color: Qt.darker(root.fg, 1.4); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+            }
+            Repeater {
+              model: root.identities.unlisted || []
+              delegate: Button {
+                required property var modelData
+                text: "Add " + modelData.name; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; fontSize: Style.font.caption
+                onClicked: root.identityCommand(["identity-add", "--", modelData.key, modelData.name], "Added " + modelData.name)
+              }
+            }
+          }
+
+          Text {
+            visible: (root.identities.anonymous_sessions || 0) > 0
+            width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+            text: root.identities.anonymous_sessions + (root.identities.anonymous_sessions === 1 ? " paired phone is" : " paired phones are") + " anonymous (paired before identities, or by a plain QR). Re-pair to identify."
+            color: Qt.darker(root.fg, 1.4); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+          }
+
+          Button {
+            width: parent.width
+            text: root.reindexing ? "Indexing voices…" : "Re-index voices"
+            bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily
+            enabled: !root.reindexing
+            onClicked: root.reindexVoices()
+          }
+        }
+
+        PanelSeparator { foreground: root.fg; visible: root.section === "identities" }
 
                 Column {
           visible: root.section === "appearance"
