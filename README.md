@@ -9,6 +9,20 @@ onto a terminal.
 
 Project home: <https://github.com/omribenami/Omarchy-AI>
 
+## Getting started
+
+Save a Vercel AI Gateway key before the first conversation. In the Vercel
+dashboard open **your team → AI Gateway → API Keys** and click **Create
+key**:
+[AI Gateway API Keys](https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys&title=AI+Gateway+API+Keys).
+Then open **Omarchy-AI** on the bar, set **Conversation model** to
+**Gateway voice**, paste the key into **Vercel AI Gateway key**, click
+**Save key**, and click **Apply saved changes**.
+
+The key is stored at `~/.config/omarchy-ai/vercel-ai-gateway-key`. The full
+steps are in
+[Getting Started](https://github.com/omribenami/Omarchy-AI/blob/main/docs/getting-started.md).
+
 <div align="center">
 
 https://github.com/user-attachments/assets/ea736181-9cf3-423a-b7d5-91a895fe6589
@@ -70,8 +84,10 @@ Download a GitHub Release, or install from source with `install.sh`:
 
 `install.sh` installs the Python daemon, wake models, desktop plugins, and
 this settings panel. That is the install that runs Omarchy-AI. After the
-daemon is running, open **Omarchy-AI** on the bar, choose a provider, save
-a key, and apply the change so the service restarts with it.
+daemon is running, open **Omarchy-AI** on the bar, set **Conversation
+model** to **Gateway voice**, save a **Vercel AI Gateway key**, and apply
+the change so the service restarts with it. The walkthrough is
+[Getting Started](https://github.com/omribenami/Omarchy-AI/blob/main/docs/getting-started.md).
 
 `omarchy plugin add` is not that install. It does not run the daemon.
 
