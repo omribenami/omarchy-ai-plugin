@@ -471,6 +471,10 @@ Panel {
   // Standing rules (core/memory.py): active ones are in every conversation;
   // proposals wait for a yes. Each memory-* command prints {"memory": ...}.
   readonly property var memoryState: snapshot.memory || ({})
+  function memoryIdleDays(id) {
+    var hit = (memoryState.stale || []).filter(function(r) { return r.id === id })
+    return hit.length > 0 ? hit[0].idle_days : 0
+  }
 
   function memoryCommand(argv, successMessage) {
     root._enqueue(argv, function(result) {
@@ -1290,23 +1294,25 @@ Panel {
 
           Text {
             width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
-            text: "What the assistant remembers between conversations. A rule it proposes is used only after you say yes (or Save it here)."
+            text: "What the assistant remembers between conversations. A rule it proposes is used only after you say yes (or Save it here). Notes (facts and procedures) are looked up only when needed."
               + ((root.memoryState.review || []).length > 0 ? " Memory is full (" + root.memoryState.cap + "): forget the rules you no longer need; the least recently used are marked." : "")
             color: Qt.darker(root.fg, 1.4); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
           }
 
           Repeater {
-            model: (root.memoryState.proposed || []).concat(root.memoryState.active || [])
+            model: (root.memoryState.proposed || []).concat(root.memoryState.active || []).concat(root.memoryState.notes || [])
             delegate: Row {
               id: memoryRow
               required property var modelData
               readonly property bool stale: (root.memoryState.review || []).some(function(r) { return r.id === memoryRow.modelData.id })
+              readonly property bool idle: (root.memoryState.stale || []).some(function(r) { return r.id === memoryRow.modelData.id })
+              readonly property bool note: memoryRow.modelData.kind === "fact" || memoryRow.modelData.kind === "procedure"
               width: parent.width; spacing: Style.space(8)
               Text {
                 width: parent.width - forgetMemoryButton.width - (saveMemoryButton.visible ? saveMemoryButton.width + Style.space(8) : 0) - Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
                 wrapMode: Text.WordWrap; textFormat: Text.PlainText
-                text: (memoryRow.modelData.confirmed ? "" : "Proposed: ") + (memoryRow.stale ? "(least used) " : "") + memoryRow.modelData.text
+                text: (memoryRow.modelData.confirmed ? "" : "Proposed: ") + (memoryRow.note ? "Note (" + memoryRow.modelData.kind + "): " : "") + (memoryRow.stale ? "(least used) " : "") + (memoryRow.idle ? "(unused for " + root.memoryIdleDays(memoryRow.modelData.id) + " days) " : "") + memoryRow.modelData.text
                 color: memoryRow.modelData.confirmed ? root.fg : Qt.darker(root.fg, 1.3); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
               }
               Button { id: saveMemoryButton; visible: !memoryRow.modelData.confirmed; text: "Save"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; fontSize: Style.font.caption; onClicked: root.memoryCommand(["memory-confirm", memoryRow.modelData.id], "Rule saved") }
