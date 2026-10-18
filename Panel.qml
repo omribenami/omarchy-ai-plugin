@@ -468,6 +468,22 @@ Panel {
     root.identityCommand(["identity-add", "--", key, String(name).trim()], "Added " + String(name).trim())
   }
 
+  // Standing rules (core/memory.py): active ones are in every conversation;
+  // proposals wait for a yes. Each memory-* command prints {"memory": ...}.
+  readonly property var memoryState: snapshot.memory || ({})
+
+  function memoryCommand(argv, successMessage) {
+    root._enqueue(argv, function(result) {
+      if (result && result.memory) {
+        var next = Object.assign({}, root.snapshot)
+        next.memory = result.memory
+        root.snapshot = next
+      }
+      root.statusTone = result && !result.error ? "ok" : "error"
+      root.statusMessage = result && result.error ? result.error : successMessage
+    })
+  }
+
   function reindexVoices() {
     root.reindexing = true
     root._enqueue(["enroll-speakers"], function(result) {
@@ -1264,6 +1280,55 @@ Panel {
         }
 
         PanelSeparator { foreground: root.fg; visible: root.section === "identities" }
+
+        Column {
+          visible: root.section === "identities"
+          width: parent.width
+          spacing: Style.space(8)
+
+          PanelSectionHeader { text: "STANDING RULES"; foreground: root.fg; fontFamily: root.bar.fontFamily }
+
+          Text {
+            width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+            text: "What the assistant remembers between conversations. A rule it proposes is used only after you say yes (or Save it here)."
+              + ((root.memoryState.review || []).length > 0 ? " Memory is full (" + root.memoryState.cap + "): forget the rules you no longer need; the least recently used are marked." : "")
+            color: Qt.darker(root.fg, 1.4); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+          }
+
+          Repeater {
+            model: (root.memoryState.proposed || []).concat(root.memoryState.active || [])
+            delegate: Row {
+              id: memoryRow
+              required property var modelData
+              readonly property bool stale: (root.memoryState.review || []).some(function(r) { return r.id === memoryRow.modelData.id })
+              width: parent.width; spacing: Style.space(8)
+              Text {
+                width: parent.width - forgetMemoryButton.width - (saveMemoryButton.visible ? saveMemoryButton.width + Style.space(8) : 0) - Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                text: (memoryRow.modelData.confirmed ? "" : "Proposed: ") + (memoryRow.stale ? "(least used) " : "") + memoryRow.modelData.text
+                color: memoryRow.modelData.confirmed ? root.fg : Qt.darker(root.fg, 1.3); font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall
+              }
+              Button { id: saveMemoryButton; visible: !memoryRow.modelData.confirmed; text: "Save"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; fontSize: Style.font.caption; onClicked: root.memoryCommand(["memory-confirm", memoryRow.modelData.id], "Rule saved") }
+              Button { id: forgetMemoryButton; text: "Forget"; bordered: true; foreground: "#ff6b6b"; fontFamily: root.bar.fontFamily; fontSize: Style.font.caption; onClicked: root.memoryCommand(["memory-forget", memoryRow.modelData.id], "Rule forgotten") }
+            }
+          }
+
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+            TextField {
+              id: newMemoryField
+              width: parent.width - addMemoryButton.width - Style.space(8)
+              placeholderText: "A standing rule, e.g. Always confirm before muting"
+              foreground: root.fg
+              font.family: root.bar.fontFamily
+              onAccepted: { if (text.trim().length > 0) root.memoryCommand(["memory-add", "--", text.trim()], "Rule saved"); text = "" }
+            }
+            Button { id: addMemoryButton; text: "Add rule"; bordered: true; foreground: root.fg; fontFamily: root.bar.fontFamily; onClicked: { if (newMemoryField.text.trim().length > 0) root.memoryCommand(["memory-add", "--", newMemoryField.text.trim()], "Rule saved"); newMemoryField.text = "" } }
+          }
+        }
+
 
                 Column {
           visible: root.section === "appearance"
